@@ -1,47 +1,69 @@
-# Thetis Level Meter
+# Thetis Custom VU Meter
 
-A lightweight, standalone dual VU-style level meter for [Thetis](https://github.com/ramdor/Thetis) (OpenHPSDR),
-showing live RX and TX audio levels side by side. Monitoring only — nothing is recorded or encoded.
+A lightweight, standalone dual VU-style level meter for [Thetis](https://github.com/ramdor/Thetis)
+(OpenHPSDR) — live RX and TX audio bars, side by side, so you can dial in gain staging before a QSO
+or a recording session without a full DAW or a hardware meter.
 
-- **RX** comes straight from Thetis over the [TCI](https://github.com/ExpertSDR3/TCI) protocol
-  (`audio_start` binary stream), so it shows exactly what the receiver is producing, continuously,
+- **RX** streams straight from Thetis over the [TCI](https://github.com/ExpertSDR3/TCI) protocol
+  (`audio_start` binary frames), so it shows exactly what the receiver is producing, continuously,
   regardless of transmit state.
 - **TX** comes from a WASAPI capture of whatever device carries your mic audio into Thetis
-  (Voicemeeter, a virtual audio cable, a direct interface — you pick it during setup).
-
-Use it to dial in gain staging (mic chain → Thetis) before a QSO or a recording session, without
-needing a full DAW or a hardware meter.
+  (Voicemeeter, a virtual audio cable, a direct interface — you pick it during setup, no editing
+  required).
+- Monitoring only. Nothing is recorded, encoded, or written to disk beyond an optional diagnostic
+  log.
 
 ![screenshot placeholder](docs/screenshot.png)
 
 ## Requirements
 
-- Windows 10/11
-- [PowerShell 7+](https://github.com/PowerShell/PowerShell/releases) — Windows ships with 5.1 by
-  default, which is **not** enough. Easiest install: `winget install Microsoft.PowerShell`, then run
-  the script with `pwsh`, not `powershell.exe`.
-- Thetis with the TCI server enabled: **Setup → Serial/Network/Midi CAT → Network → TCI Server**
-- Internet access on first run only (downloads NAudio via NuGet)
+| | |
+|---|---|
+| OS | Windows 10 or 11 |
+| PowerShell | [7.0+](https://github.com/PowerShell/PowerShell/releases) — Windows ships with 5.1 by default, which is **not** enough. The installer below will offer to install it for you. |
+| Thetis | TCI server enabled: **Setup → Serial/Network/Midi CAT → Network → TCI Server** |
+| Network | Internet access on first run only (downloads NAudio via NuGet) |
 
-## Getting started
+No admin rights needed for normal use — the installer and the meter both run per-user.
 
-1. Download `ThetisLevelMeter.ps1`.
-2. If it came from a browser/email/Slack, right-click → Properties → **Unblock** (or run
-   `Unblock-File .\ThetisLevelMeter.ps1` in PowerShell) — Windows flags downloaded scripts by default.
+## Install
+
+**Option A — one-liner** (recommended; opens PowerShell from the Start menu, then paste):
+
+```powershell
+irm https://raw.githubusercontent.com/Chris-W4ORS/Thetis-Custom-VU-Meter/main/Install.ps1 | iex
+```
+
+This downloads the meter, checks for/offers to install PowerShell 7, and creates a "Thetis VU
+Meter" shortcut on your Desktop. Re-run it any time to update to the latest version — your saved
+setup (device choice, TCI host/port) isn't touched, since that lives separately in
+`%APPDATA%\ThetisQSORecorder\`.
+
+**Option B — manual:**
+
+1. Download `ThetisLevelMeter.ps1` from this repo.
+2. Right-click → Properties → **Unblock** (or `Unblock-File .\ThetisLevelMeter.ps1`) — Windows
+   flags files downloaded from the internet by default.
 3. Run it:
    ```powershell
    pwsh .\ThetisLevelMeter.ps1
    ```
-4. First run walks you through a short setup:
-   - Pick which recording device carries your mic audio into Thetis, from a numbered list of
-     everything Windows sees.
-   - Confirm the TCI host (press Enter to auto-detect) and port (default `50001`).
-   - It live-tests the TCI connection right there, so a typo or a not-yet-enabled TCI server gets
-     caught immediately instead of showing up later as a blank meter.
-5. That's it — every run after this is silent. To change devices or the TCI connection later:
-   ```powershell
-   pwsh .\ThetisLevelMeter.ps1 -Reconfigure
-   ```
+
+## First run
+
+A short setup wizard runs automatically the first time:
+
+1. Pick which recording device carries your mic audio into Thetis, from a numbered list of
+   everything Windows sees — no hardcoded device names to edit.
+2. Confirm the TCI host (press Enter to auto-detect) and port (default `50001`).
+3. It live-tests the TCI connection right there, so a typo or a not-yet-enabled TCI server gets
+   caught immediately instead of showing up later as a blank meter.
+
+Every run after that is silent. To change devices or the TCI connection later:
+
+```powershell
+pwsh .\ThetisLevelMeter.ps1 -Reconfigure
+```
 
 Setup is saved to `%APPDATA%\ThetisQSORecorder\LevelMeter.config.json`.
 
