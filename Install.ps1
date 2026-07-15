@@ -77,10 +77,24 @@ $shortcut.Description = "Thetis Custom VU Meter"
 $shortcut.Save()
 Write-Host "Desktop shortcut created: $shortcutPath" -ForegroundColor Green
 
+# Second shortcut for re-running setup (change mic device / TCI host/port later)
+# without anyone needing to know the install path or the -Reconfigure flag exists.
+$reconfigShortcutPath = Join-Path $desktop "Thetis VU Meter (Reconfigure).lnk"
+$reconfigShortcut = $wsh.CreateShortcut($reconfigShortcutPath)
+$reconfigShortcut.TargetPath = if ($pwshPath) { $pwshPath } else { "pwsh.exe" }
+$reconfigShortcut.Arguments  = "-NoExit -File `"$scriptPath`" -Reconfigure"
+$reconfigShortcut.WorkingDirectory = $InstallDir
+if ($pwshPath) { $reconfigShortcut.IconLocation = "$pwshPath,0" }
+$reconfigShortcut.Description = "Re-run Thetis VU Meter setup (change mic device or TCI connection)"
+$reconfigShortcut.Save()
+Write-Host "Reconfigure shortcut created: $reconfigShortcutPath" -ForegroundColor Green
+
 Write-Host ""
 Write-Host "=== Install complete ===" -ForegroundColor Cyan
 Write-Host "Double-click 'Thetis VU Meter' on your Desktop to launch it."
 Write-Host "First launch walks you through a short one-time setup: pick your mic/TX capture"
-Write-Host "device, confirm Thetis's TCI connection. Re-run that setup any time with:"
-Write-Host "  pwsh `"$scriptPath`" -Reconfigure" -ForegroundColor Gray
+Write-Host "device, confirm Thetis's TCI connection."
+Write-Host ""
+Write-Host "Need to change your mic device or TCI connection later? Use the second shortcut:"
+Write-Host "'Thetis VU Meter (Reconfigure)' -- also created on your Desktop." -ForegroundColor Gray
 Write-Host ""

@@ -73,7 +73,9 @@ A short setup wizard runs automatically the first time:
 3. It live-tests the TCI connection right there, so a typo or a not-yet-enabled TCI server gets
    caught immediately instead of showing up later as a blank meter.
 
-Every run after that is silent. To change devices or the TCI connection later:
+Every run after that is silent. To change devices or the TCI connection later, either double-click
+the **"Thetis VU Meter (Reconfigure)"** shortcut on your Desktop (created alongside the main one if
+you used the one-liner installer), or run:
 
 ```powershell
 pwsh .\ThetisLevelMeter.ps1 -Reconfigure
