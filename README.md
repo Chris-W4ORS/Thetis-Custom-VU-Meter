@@ -15,13 +15,27 @@ or a recording session without a full DAW or a hardware meter.
 
 ![screenshot placeholder](docs/screenshot.png)
 
+## Enabling TCI in Thetis
+
+The meter connects to Thetis over TCI, which is off by default. In Thetis:
+
+**Setup → Serial/Network/Midi CAT → Network → TCI**
+
+- Check **TCI Server Running** (or the equivalent enable checkbox for your Thetis version)
+- Leave the port at the default **50001** unless you have a reason to change it — the installer/wizard
+  defaults to that port too
+- If this is the first time you've enabled it, Windows may prompt with a Firewall permission dialog
+  for Thetis — allow it on at least your **Private** network
+
+You only need to do this once; Thetis remembers the setting across restarts.
+
 ## Requirements
 
 | | |
 |---|---|
 | OS | Windows 10 or 11 |
 | PowerShell | [7.0+](https://github.com/PowerShell/PowerShell/releases) — Windows ships with 5.1 by default, which is **not** enough. The installer below will offer to install it for you. |
-| Thetis | TCI server enabled: **Setup → Serial/Network/Midi CAT → Network → TCI Server** |
+| Thetis | TCI server enabled — see [Enabling TCI in Thetis](#enabling-tci-in-thetis) below |
 | Network | Internet access on first run only (downloads NAudio via NuGet) |
 
 No admin rights needed for normal use — the installer and the meter both run per-user.
