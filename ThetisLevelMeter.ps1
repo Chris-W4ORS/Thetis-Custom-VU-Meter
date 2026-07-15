@@ -787,7 +787,12 @@ $valRx2.AutoSize = $true
 $form.Controls.Add($valRx2)
 
 $lblTx = [System.Windows.Forms.Label]::new()
-$lblTx.Text = "TX — Voicemeeter B1"
+# Show whatever device is actually in use (from the wizard/config), not a
+# hardcoded name — this was previously always "TX — Voicemeeter B1" even
+# when someone picked a completely different device during setup.
+$txLabelName = if ($txDevice) { $txDevice.FriendlyName } else { "$TxDeviceSubstr (not found)" }
+if ($txLabelName.Length -gt 40) { $txLabelName = $txLabelName.Substring(0, 37) + "..." }
+$lblTx.Text = "TX — $txLabelName"
 $lblTx.ForeColor = [System.Drawing.Color]::White
 $lblTx.Font = $fontLabel
 $lblTx.Location = [System.Drawing.Point]::new(20, 142)
