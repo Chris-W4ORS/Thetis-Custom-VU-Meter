@@ -1,0 +1,15 @@
+# Personal setup — machine-specific device names, IPs, and diagnostic logs
+# shouldn't be committed. Anyone cloning this generates their own on first run.
+*.config.json
+logs/
+*.log
+
+# NAudio DLLs get downloaded locally on first run — don't vendor them in git
+lib/
+
+# Windows / editor noise
+Thumbs.db
+desktop.ini
+.vs/
+.vscode/
+*.user
