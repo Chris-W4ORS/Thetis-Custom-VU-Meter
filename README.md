@@ -91,8 +91,9 @@ A short setup wizard runs automatically the first time:
 
 1. Pick which recording device carries your mic audio into Thetis, from a numbered list of
    everything Windows sees — no hardcoded device names to edit.
-2. Confirm the TCI host (press Enter to auto-detect) and port (default `50001`).
-3. It live-tests the TCI connection right there, so a typo or a not-yet-enabled TCI server gets
+2. Enter your callsign — shown in the meter window's title bar. Leave blank to use "Operator".
+3. Confirm the TCI host (press Enter to auto-detect) and port (default `50001`).
+4. It live-tests the TCI connection right there, so a typo or a not-yet-enabled TCI server gets
    caught immediately instead of showing up later as a blank meter.
 
 Every run after that is silent. To change devices or the TCI connection later, either double-click
