@@ -15,6 +15,11 @@ or a recording session without a full DAW or a hardware meter.
 
 ![screenshot placeholder](docs/screenshot.png)
 
+> **Tip:** pair this with [Thetis QSO Recorder](https://github.com/Chris-W4ORS/ThetisQSORecorder) —
+> a background recorder that captures full QSOs to MP3, automatically switching between RX and TX
+> as you transmit. Use this meter to confirm your levels are dialed in before or during a recording
+> session.
+
 ## Enabling TCI in Thetis
 
 The meter connects to Thetis over TCI, which is off by default. In Thetis:
