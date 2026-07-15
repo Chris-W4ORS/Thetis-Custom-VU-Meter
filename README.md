@@ -53,10 +53,19 @@ No admin rights needed for normal use — the installer and the meter both run p
 irm https://raw.githubusercontent.com/Chris-W4ORS/Thetis-Custom-VU-Meter/main/Install.ps1 | iex
 ```
 
-This downloads the meter, checks for/offers to install PowerShell 7, and creates a "Thetis VU
-Meter" shortcut on your Desktop. Re-run it any time to update to the latest version — your saved
-setup (device choice, TCI host/port) isn't touched, since that lives separately in
-`%APPDATA%\ThetisQSORecorder\`.
+This downloads the meter, checks for/offers to install PowerShell 7, and creates **two shortcuts on
+your Desktop**:
+
+- **"Thetis VU Meter"** — double-click this one to actually launch the meter
+- **"Thetis VU Meter (Reconfigure)"** — only needed later, if you want to change devices or the TCI
+  connection (see [First run](#first-run) below)
+
+When the one-liner finishes, the PowerShell window is done — close it, then go to your **Desktop**
+and **double-click "Thetis VU Meter"**. Make sure Thetis is already open with TCI enabled (see
+above) before that first launch, so the setup wizard's connection test actually succeeds.
+
+Re-run the one-liner any time to update to the latest version — your saved setup (device choice,
+TCI host/port) isn't touched, since that lives separately in `%APPDATA%\ThetisQSORecorder\`.
 
 **Option B — manual:**
 
