@@ -296,15 +296,79 @@ function Update-PeakHold {
     Add-History -Source $Source -PeakDb $InstantPeakDb -RmsDb $(if ($Source -eq "rx") { $script:rxRmsDb } else { $script:txRmsDb })
 }
 
+# ── TCI connect helpers ────────────────────────────────────────────────────────
+# Defined here (earlier than a first read of this file might suggest they
+# "belong") because PowerShell does NOT pre-register top-level functions
+# before a script starts running — a function statement takes effect only
+# once the interpreter actually reaches it, same as any other statement.
+# An earlier version of this script assumed the opposite ("PowerShell
+# resolves all function definitions before executing statements") and placed
+# these after the setup wizard; that produced a real
+# "Get-TciCandidateHosts is not recognized" failure the first time the
+# wizard's live TCI test ran, since the wizard (defined/invoked earlier)
+# called these before the interpreter had ever reached their definitions
+# further down the file. They now live before the wizard so they're already
+# defined by the time it needs them.
+function Get-TciCandidateHosts {
+    $candidates = [System.Collections.Generic.List[string]]::new()
+    if ($TciHost -and $TciHost -ne "auto") { $candidates.Add($TciHost) }
+    $candidates.Add("127.0.0.1")
+    try {
+        $listening = Get-NetTCPConnection -State Listen -LocalPort $TciPort -ErrorAction SilentlyContinue
+        foreach ($conn in $listening) {
+            $addr = $conn.LocalAddress
+            if ($addr -and $addr -ne "0.0.0.0" -and $addr -ne "::") { $candidates.Add($addr) }
+        }
+    } catch {}
+    $seen = @{}; $ordered = [System.Collections.Generic.List[string]]::new()
+    foreach ($c in $candidates) { if (-not $seen.ContainsKey($c)) { $seen[$c] = $true; $ordered.Add($c) } }
+    return $ordered
+}
+
+function Test-TciPort {
+    param([string]$IPHost, [int]$Port, [int]$TimeoutMs = 500)
+    try {
+        $client = [System.Net.Sockets.TcpClient]::new()
+        $iar    = $client.BeginConnect($IPHost, $Port, $null, $null)
+        $ok     = $iar.AsyncWaitHandle.WaitOne($TimeoutMs, $false)
+        if ($ok -and $client.Connected) { $client.EndConnect($iar); $client.Close(); return $true }
+        $client.Close(); return $false
+    } catch { return $false }
+}
+
+function Connect-Tci {
+    Write-Host "[TCI] Discovering TCI server on port $TciPort..." -ForegroundColor Cyan
+    Write-MeterLog "INFO" "TCI connect attempt starting (port $TciPort)"
+    foreach ($candidate in (Get-TciCandidateHosts)) {
+        if (-not (Test-TciPort -IPHost $candidate -Port $TciPort)) { continue }
+        $ws = [System.Net.WebSockets.ClientWebSocket]::new()
+        $ws.Options.AddSubProtocol("tci")
+        try {
+            $ct = [System.Threading.CancellationTokenSource]::new(2000)
+            $ws.ConnectAsync([System.Uri]::new("ws://${candidate}:${TciPort}"), $ct.Token).GetAwaiter().GetResult()
+            $script:tciWs = $ws
+            $script:tciReady = $false
+            $script:rxConnected = $false
+            $script:recvTask = $null
+            $script:recvAccum = $null
+            $script:lastRxFrameAt = $null
+            Write-Host "[TCI] Connected to ws://${candidate}:${TciPort}" -ForegroundColor Green
+            Write-MeterLog "INFO" "TCI connected to ws://${candidate}:${TciPort}"
+            return $true
+        } catch {
+            Write-MeterLog "WARN" "TCI connect to ${candidate}:${TciPort} failed: $($_.Exception.Message)"
+            try { $ws.Dispose() } catch {}
+        }
+    }
+    return $false
+}
+
 # ── First-run setup wizard ─────────────────────────────────────────────────────
 # Lets this script be handed to someone else (different PC, different audio
 # devices) without them having to open and edit the source. On first launch —
 # or any time you run with -Reconfigure — this walks through picking the
 # capture device and confirming the TCI host/port, then remembers the answer
-# in $ConfigFile so every future launch is silent. Note: Get-TciCandidateHosts
-# and Test-TciPort are defined further down in this file, but PowerShell
-# resolves all top-level function definitions in a script before executing
-# any of its statements, so calling them here (textually earlier) is fine.
+# in $ConfigFile so every future launch is silent.
 function Invoke-SetupWizard {
     Write-Host ""
     Write-Host "=== Thetis Level Meter -- first-time setup ===" -ForegroundColor Cyan
@@ -422,107 +486,41 @@ $script:txQueue     = [System.Collections.Concurrent.ConcurrentQueue[byte[]]]::n
 $txDevice = Find-WasapiDevice -Substr $TxDeviceSubstr -Flow "Capture"
 
 if ($txDevice) {
-    try {
-        $script:txCapture = [NAudio.CoreAudioApi.WasapiCapture]::new($txDevice)
-        $txFmt            = $script:txCapture.WaveFormat
-        $script:txIsFloat = ($txFmt.Encoding -eq [NAudio.Wave.WaveFormatEncoding]::IeeeFloat)
-        $script:txBits    = $txFmt.BitsPerSample
-        Write-Host "[TX] Found '$($txDevice.FriendlyName)' — $($txFmt.SampleRate)Hz, $($txFmt.Channels)ch, $($txFmt.BitsPerSample)-bit, $($txFmt.Encoding)" -ForegroundColor Green
-        Write-MeterLog "INFO" "TX device connected: $($txDevice.FriendlyName) $($txFmt.SampleRate)Hz $($txFmt.Channels)ch $($txFmt.BitsPerSample)-bit $($txFmt.Encoding)"
+    $script:txCapture = [NAudio.CoreAudioApi.WasapiCapture]::new($txDevice)
+    $txFmt            = $script:txCapture.WaveFormat
+    $script:txIsFloat = ($txFmt.Encoding -eq [NAudio.Wave.WaveFormatEncoding]::IeeeFloat)
+    $script:txBits    = $txFmt.BitsPerSample
+    Write-Host "[TX] Found '$($txDevice.FriendlyName)' — $($txFmt.SampleRate)Hz, $($txFmt.Channels)ch, $($txFmt.BitsPerSample)-bit, $($txFmt.Encoding)" -ForegroundColor Green
+    Write-MeterLog "INFO" "TX device connected: $($txDevice.FriendlyName) $($txFmt.SampleRate)Hz $($txFmt.Channels)ch $($txFmt.BitsPerSample)-bit $($txFmt.Encoding)"
 
-        # NOTE: Register-ObjectEvent's -Action runs in its own isolated scope — it
-        # cannot reliably touch $script: state directly. So, same pattern as the
-        # recorder script: the action ONLY copies bytes into a thread-safe queue
-        # via -MessageData; the actual RMS/peak math runs later on the UI timer
-        # tick, which DOES share script scope.
-        $txAction = {
-            $ea = $Event.SourceEventArgs
-            $n  = $ea.BytesRecorded
-            if ($n -gt 0) {
-                $copy = New-Object byte[] $n
-                [System.Array]::Copy($ea.Buffer, 0, $copy, 0, $n)
-                $Event.MessageData.Enqueue($copy)
-            }
+    # NOTE: Register-ObjectEvent's -Action runs in its own isolated scope — it
+    # cannot reliably touch $script: state directly. So, same pattern as the
+    # recorder script: the action ONLY copies bytes into a thread-safe queue
+    # via -MessageData; the actual RMS/peak math runs later on the UI timer
+    # tick, which DOES share script scope.
+    $txAction = {
+        $ea = $Event.SourceEventArgs
+        $n  = $ea.BytesRecorded
+        if ($n -gt 0) {
+            $copy = New-Object byte[] $n
+            [System.Array]::Copy($ea.Buffer, 0, $copy, 0, $n)
+            $Event.MessageData.Enqueue($copy)
         }
-        $script:txEventSub = Register-ObjectEvent -InputObject $script:txCapture `
-            -EventName DataAvailable -Action $txAction -MessageData $script:txQueue
-
-        $script:txCapture.StartRecording()
-        $script:txConnected = $true
-    } catch {
-        # Common real-world causes on a machine we've never seen: the device is
-        # exclusively locked by another app, or Windows Privacy settings are
-        # blocking microphone access for desktop apps (Settings -> Privacy &
-        # security -> Microphone -> "Let desktop apps access your microphone").
-        # Either way, fail soft — TX meter stays blank, RX still works, and the
-        # reason is visible instead of a raw crash.
-        Write-Warning "TX meter will be blank — couldn't start capturing '$($txDevice.FriendlyName)': $($_.Exception.Message)"
-        Write-Warning "If this is unexpected, check Windows Settings -> Privacy & security -> Microphone -> 'Let desktop apps access your microphone', and make sure no other app has this device open exclusively."
-        Write-MeterLog "ERROR" "TX capture start failed for '$($txDevice.FriendlyName)': $($_.Exception.Message)"
-        try { if ($script:txCapture) { $script:txCapture.Dispose() } } catch {}
-        $script:txCapture = $null
-        $script:txConnected = $false
     }
+    $script:txEventSub = Register-ObjectEvent -InputObject $script:txCapture `
+        -EventName DataAvailable -Action $txAction -MessageData $script:txQueue
+
+    $script:txCapture.StartRecording()
+    $script:txConnected = $true
 } else {
     Write-Warning "TX meter will be blank — device not found. Update `$TxDeviceSubstr and restart."
     Write-MeterLog "WARN" "TX device not found matching '$TxDeviceSubstr' — TX meter will be blank"
 }
 
-# ── TCI connection (RX) — simplified discovery, meter-only, no MOX/CAT ───────
-function Get-TciCandidateHosts {
-    $candidates = [System.Collections.Generic.List[string]]::new()
-    if ($TciHost -and $TciHost -ne "auto") { $candidates.Add($TciHost) }
-    $candidates.Add("127.0.0.1")
-    try {
-        $listening = Get-NetTCPConnection -State Listen -LocalPort $TciPort -ErrorAction SilentlyContinue
-        foreach ($conn in $listening) {
-            $addr = $conn.LocalAddress
-            if ($addr -and $addr -ne "0.0.0.0" -and $addr -ne "::") { $candidates.Add($addr) }
-        }
-    } catch {}
-    $seen = @{}; $ordered = [System.Collections.Generic.List[string]]::new()
-    foreach ($c in $candidates) { if (-not $seen.ContainsKey($c)) { $seen[$c] = $true; $ordered.Add($c) } }
-    return $ordered
-}
-
-function Test-TciPort {
-    param([string]$IPHost, [int]$Port, [int]$TimeoutMs = 500)
-    try {
-        $client = [System.Net.Sockets.TcpClient]::new()
-        $iar    = $client.BeginConnect($IPHost, $Port, $null, $null)
-        $ok     = $iar.AsyncWaitHandle.WaitOne($TimeoutMs, $false)
-        if ($ok -and $client.Connected) { $client.EndConnect($iar); $client.Close(); return $true }
-        $client.Close(); return $false
-    } catch { return $false }
-}
-
-function Connect-Tci {
-    Write-Host "[TCI] Discovering TCI server on port $TciPort..." -ForegroundColor Cyan
-    Write-MeterLog "INFO" "TCI connect attempt starting (port $TciPort)"
-    foreach ($candidate in (Get-TciCandidateHosts)) {
-        if (-not (Test-TciPort -IPHost $candidate -Port $TciPort)) { continue }
-        $ws = [System.Net.WebSockets.ClientWebSocket]::new()
-        $ws.Options.AddSubProtocol("tci")
-        try {
-            $ct = [System.Threading.CancellationTokenSource]::new(2000)
-            $ws.ConnectAsync([System.Uri]::new("ws://${candidate}:${TciPort}"), $ct.Token).GetAwaiter().GetResult()
-            $script:tciWs = $ws
-            $script:tciReady = $false
-            $script:rxConnected = $false
-            $script:recvTask = $null
-            $script:recvAccum = $null
-            $script:lastRxFrameAt = $null
-            Write-Host "[TCI] Connected to ws://${candidate}:${TciPort}" -ForegroundColor Green
-            Write-MeterLog "INFO" "TCI connected to ws://${candidate}:${TciPort}"
-            return $true
-        } catch {
-            Write-MeterLog "WARN" "TCI connect to ${candidate}:${TciPort} failed: $($_.Exception.Message)"
-            try { $ws.Dispose() } catch {}
-        }
-    }
-    return $false
-}
-
+# ── TCI connection (RX) — actually connect now, using the config resolved
+# above. Get-TciCandidateHosts / Test-TciPort / Connect-Tci were moved earlier
+# in this file (see note near the setup wizard) so the wizard's live-test can
+# call them; this is just the real connection attempt.
 $script:tciWs = $null
 if (-not (Connect-Tci)) {
     Write-Warning "[TCI] Could not connect — RX meter will be blank. Make sure Thetis's TCI server is running, then restart this script."
