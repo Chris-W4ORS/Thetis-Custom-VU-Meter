@@ -99,6 +99,31 @@ fact instead of needing to be caught live.
 - If the TCI socket drops, the script retries with exponential backoff (3s → 60s cap) instead of
   requiring a restart.
 
+## Troubleshooting
+
+**Script won't run at all, even after Unblock-File.**
+Check your PowerShell execution policy — some locked-down machines default to `Restricted`, which
+blocks all scripts, not just downloaded ones:
+```powershell
+Get-ExecutionPolicy
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
+
+**TX meter is blank / a warning mentions the mic device couldn't be opened.**
+Windows may be blocking desktop apps from using your microphone. Check **Settings → Privacy &
+security → Microphone → "Let desktop apps access your microphone"** is turned on. Also make sure
+no other application currently has that device open exclusively (some apps grab exclusive mode).
+
+**The PowerShell window stays open after I close the meter.**
+That's intentional — it's there so that if something goes wrong on startup, the error stays visible
+instead of the window vanishing before you can read it. Just close that window too (or type `exit`)
+once you're done.
+
+**RX meter is blank.**
+Almost always means Thetis's TCI server isn't running yet — see
+[Enabling TCI in Thetis](#enabling-tci-in-thetis) above. Run with `-Reconfigure` to re-test the
+connection once it's on.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).

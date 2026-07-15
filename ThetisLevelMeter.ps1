@@ -422,32 +422,47 @@ $script:txQueue     = [System.Collections.Concurrent.ConcurrentQueue[byte[]]]::n
 $txDevice = Find-WasapiDevice -Substr $TxDeviceSubstr -Flow "Capture"
 
 if ($txDevice) {
-    $script:txCapture = [NAudio.CoreAudioApi.WasapiCapture]::new($txDevice)
-    $txFmt            = $script:txCapture.WaveFormat
-    $script:txIsFloat = ($txFmt.Encoding -eq [NAudio.Wave.WaveFormatEncoding]::IeeeFloat)
-    $script:txBits    = $txFmt.BitsPerSample
-    Write-Host "[TX] Found '$($txDevice.FriendlyName)' — $($txFmt.SampleRate)Hz, $($txFmt.Channels)ch, $($txFmt.BitsPerSample)-bit, $($txFmt.Encoding)" -ForegroundColor Green
-    Write-MeterLog "INFO" "TX device connected: $($txDevice.FriendlyName) $($txFmt.SampleRate)Hz $($txFmt.Channels)ch $($txFmt.BitsPerSample)-bit $($txFmt.Encoding)"
+    try {
+        $script:txCapture = [NAudio.CoreAudioApi.WasapiCapture]::new($txDevice)
+        $txFmt            = $script:txCapture.WaveFormat
+        $script:txIsFloat = ($txFmt.Encoding -eq [NAudio.Wave.WaveFormatEncoding]::IeeeFloat)
+        $script:txBits    = $txFmt.BitsPerSample
+        Write-Host "[TX] Found '$($txDevice.FriendlyName)' — $($txFmt.SampleRate)Hz, $($txFmt.Channels)ch, $($txFmt.BitsPerSample)-bit, $($txFmt.Encoding)" -ForegroundColor Green
+        Write-MeterLog "INFO" "TX device connected: $($txDevice.FriendlyName) $($txFmt.SampleRate)Hz $($txFmt.Channels)ch $($txFmt.BitsPerSample)-bit $($txFmt.Encoding)"
 
-    # NOTE: Register-ObjectEvent's -Action runs in its own isolated scope — it
-    # cannot reliably touch $script: state directly. So, same pattern as the
-    # recorder script: the action ONLY copies bytes into a thread-safe queue
-    # via -MessageData; the actual RMS/peak math runs later on the UI timer
-    # tick, which DOES share script scope.
-    $txAction = {
-        $ea = $Event.SourceEventArgs
-        $n  = $ea.BytesRecorded
-        if ($n -gt 0) {
-            $copy = New-Object byte[] $n
-            [System.Array]::Copy($ea.Buffer, 0, $copy, 0, $n)
-            $Event.MessageData.Enqueue($copy)
+        # NOTE: Register-ObjectEvent's -Action runs in its own isolated scope — it
+        # cannot reliably touch $script: state directly. So, same pattern as the
+        # recorder script: the action ONLY copies bytes into a thread-safe queue
+        # via -MessageData; the actual RMS/peak math runs later on the UI timer
+        # tick, which DOES share script scope.
+        $txAction = {
+            $ea = $Event.SourceEventArgs
+            $n  = $ea.BytesRecorded
+            if ($n -gt 0) {
+                $copy = New-Object byte[] $n
+                [System.Array]::Copy($ea.Buffer, 0, $copy, 0, $n)
+                $Event.MessageData.Enqueue($copy)
+            }
         }
-    }
-    $script:txEventSub = Register-ObjectEvent -InputObject $script:txCapture `
-        -EventName DataAvailable -Action $txAction -MessageData $script:txQueue
+        $script:txEventSub = Register-ObjectEvent -InputObject $script:txCapture `
+            -EventName DataAvailable -Action $txAction -MessageData $script:txQueue
 
-    $script:txCapture.StartRecording()
-    $script:txConnected = $true
+        $script:txCapture.StartRecording()
+        $script:txConnected = $true
+    } catch {
+        # Common real-world causes on a machine we've never seen: the device is
+        # exclusively locked by another app, or Windows Privacy settings are
+        # blocking microphone access for desktop apps (Settings -> Privacy &
+        # security -> Microphone -> "Let desktop apps access your microphone").
+        # Either way, fail soft — TX meter stays blank, RX still works, and the
+        # reason is visible instead of a raw crash.
+        Write-Warning "TX meter will be blank — couldn't start capturing '$($txDevice.FriendlyName)': $($_.Exception.Message)"
+        Write-Warning "If this is unexpected, check Windows Settings -> Privacy & security -> Microphone -> 'Let desktop apps access your microphone', and make sure no other app has this device open exclusively."
+        Write-MeterLog "ERROR" "TX capture start failed for '$($txDevice.FriendlyName)': $($_.Exception.Message)"
+        try { if ($script:txCapture) { $script:txCapture.Dispose() } } catch {}
+        $script:txCapture = $null
+        $script:txConnected = $false
+    }
 } else {
     Write-Warning "TX meter will be blank — device not found. Update `$TxDeviceSubstr and restart."
     Write-MeterLog "WARN" "TX device not found matching '$TxDeviceSubstr' — TX meter will be blank"
