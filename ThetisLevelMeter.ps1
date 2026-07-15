@@ -36,6 +36,8 @@ param(
 # ─────────────────────────────────────────────────────────────────────────────
 # USER CONFIGURATION
 # ─────────────────────────────────────────────────────────────────────────────
+$Callsign       = "W4ORS"       # shown in the window title bar. Overridden by the
+                                # setup wizard on first run / -Reconfigure.
 $TciHost        = "auto"        # "auto" = discover TCI bind address automatically
 $TciPort        = 50001
 $TciTrxIndex    = 0
@@ -397,6 +399,11 @@ function Invoke-SetupWizard {
     Write-Host "Using: $($chosenDevice.FriendlyName)" -ForegroundColor Green
     Write-Host ""
 
+    $callsignIn = Read-Host "Your callsign (shown in the window title)"
+    $chosenCallsign = if ([string]::IsNullOrWhiteSpace($callsignIn)) { "Operator" } else { $callsignIn.Trim().ToUpper() }
+    Write-Host "Using: $chosenCallsign" -ForegroundColor Green
+    Write-Host ""
+
     $hostIn = Read-Host "Thetis TCI host -- press Enter to auto-detect, or type an IP (e.g. 127.0.0.1)"
     $tciHostVal = if ([string]::IsNullOrWhiteSpace($hostIn)) { "auto" } else { $hostIn.Trim() }
 
@@ -427,6 +434,7 @@ function Invoke-SetupWizard {
     }
 
     $config = [ordered]@{
+        Callsign             = $chosenCallsign
         TxDeviceFriendlyName = $chosenDevice.FriendlyName
         TciHost              = $tciHostVal
         TciPort              = $tciPortVal
@@ -456,12 +464,13 @@ if ($Reconfigure -or -not (Test-Path $ConfigFile)) {
 }
 
 if ($script:setupConfig) {
+    if ($script:setupConfig.Callsign) { $Callsign = $script:setupConfig.Callsign }
     $TxDeviceSubstr = $script:setupConfig.TxDeviceFriendlyName
     $TciHost        = $script:setupConfig.TciHost
     $TciPort        = [int]$script:setupConfig.TciPort
-    Write-MeterLog "INFO" "Active config: TxDevice='$TxDeviceSubstr' TciHost=$TciHost TciPort=$TciPort"
+    Write-MeterLog "INFO" "Active config: Callsign=$Callsign TxDevice='$TxDeviceSubstr' TciHost=$TciHost TciPort=$TciPort"
 } else {
-    Write-Warning "No configuration available -- falling back to the built-in defaults (TxDeviceSubstr='$TxDeviceSubstr', TciHost='$TciHost', TciPort=$TciPort)."
+    Write-Warning "No configuration available -- falling back to the built-in defaults (Callsign='$Callsign', TxDeviceSubstr='$TxDeviceSubstr', TciHost='$TciHost', TciPort=$TciPort)."
     Write-MeterLog "WARN" "No config available -- using built-in script defaults"
 }
 
@@ -746,7 +755,7 @@ function Enable-DoubleBuffer {
 }
 
 $form = [System.Windows.Forms.Form]::new()
-$form.Text = "Thetis Level Meter — W4ORS"
+$form.Text = "Thetis Level Meter — $Callsign"
 $form.ClientSize = [System.Drawing.Size]::new(560, 320)
 $form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog
 $form.MaximizeBox = $false
